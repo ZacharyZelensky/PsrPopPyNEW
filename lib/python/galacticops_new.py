@@ -27,40 +27,87 @@ yklib.llfr_.restype = C.c_float
 # BEGIN FUNCTION DEFINITIONS
 
 
-def vxyz(pulsar):
-    """Evolve a pulsar through galactic potential"""
-    x, y, z = pulsar.galCoords
-    vx, vy, vz = pulsar.vx, pulsar.vy, pulsar.vz
-    age_Myr = pulsar.age/1.0E6
+def vxyz(galCoords, vx, vy, vz, ages):
+    """
+    Evolve a population of pulsars through the Galactic potential.
 
-    x, y, z = C.c_float(x), C.c_float(y), C.c_float(z)
-    vx, vy, vz = C.c_float(vx), C.c_float(vy), C.c_float(vz)
-    age_Myr = C.c_float(age_Myr)
-    bound = C.c_long(0)
+    Parameters
+    ----------
+    galCoords : ndarray, shape (N, 3)
+        Initial x, y, z positions in kpc.
 
-    # run the evolution code
-    vxyzlib.vxyz_(C.byref(C.c_float(0.005)),
-                  C.byref(x),
-                  C.byref(y),
-                  C.byref(z),
-                  C.byref(age_Myr),
-                  C.byref(vx),
-                  C.byref(vy),
-                  C.byref(vz),
-                  C.byref(x),
-                  C.byref(y),
-                  C.byref(z),
-                  C.byref(vx),
-                  C.byref(vy),
-                  C.byref(vz),
-                  C.byref(bound)
-                  )
+    vx, vy, vz : ndarray, shape (N,)
+        Initial velocities.
 
-    # convert the output C types to python numbers
-    pulsar.galCoords = x.value, y.value, z.value
-    pulsar.vx = vx.value
-    pulsar.vy = vy.value
-    pulsar.vz = vz.value
+    ages : ndarray, shape (N,)
+        Pulsar ages in years.
+
+    Returns
+    -------
+    galCoords_new : ndarray, shape (N, 3)
+        Final positions.
+
+    vx_new, vy_new, vz_new : ndarray
+        Final velocities.
+    """
+
+    N = len(ages)
+
+    # Output arrays
+    galCoords_new = np.empty((N, 3), dtype=np.float32)
+    vx_new = np.empty(N, dtype=np.float32)
+    vy_new = np.empty(N, dtype=np.float32)
+    vz_new = np.empty(N, dtype=np.float32)
+
+    for i in range(N):
+
+        x = C.c_float(galCoords[i, 0])
+        y = C.c_float(galCoords[i, 1])
+        z = C.c_float(galCoords[i, 2])
+
+        vx_i = C.c_float(vx[i])
+        vy_i = C.c_float(vy[i])
+        vz_i = C.c_float(vz[i])
+
+        age_Myr = C.c_float(ages[i] / 1.0E6)
+
+        bound = C.c_long(0)
+
+        dt = C.c_float(0.005)
+
+        vxyzlib.vxyz_(
+            C.byref(dt),
+
+            C.byref(x),
+            C.byref(y),
+            C.byref(z),
+
+            C.byref(age_Myr),
+
+            C.byref(vx_i),
+            C.byref(vy_i),
+            C.byref(vz_i),
+
+            C.byref(x),
+            C.byref(y),
+            C.byref(z),
+
+            C.byref(vx_i),
+            C.byref(vy_i),
+            C.byref(vz_i),
+
+            C.byref(bound)
+        )
+
+        galCoords_new[i, 0] = x.value
+        galCoords_new[i, 1] = y.value
+        galCoords_new[i, 2] = z.value
+
+        vx_new[i] = vx_i.value
+        vy_new[i] = vy_i.value
+        vz_new[i] = vz_i.value
+
+    return galCoords_new, vx_new, vy_new, vz_new
 
 
 def calc_dtrue(cart_pos):
@@ -191,6 +238,44 @@ def lb_to_radec(l, b):
                     C.byref(C.c_int(1)))
     return ra.value, dec.value
 
+def lb_to_radec_vectorized(l, b):
+
+    l = np.deg2rad(l)
+    b = np.deg2rad(b)
+
+    # Galactic -> Equatorial rotation matrix
+    R = np.array([
+        [-0.0548755604, -0.8734370902, -0.4838350155],
+        [ 0.4941094279, -0.4448296300,  0.7469822445],
+        [-0.8676661490, -0.1980763734,  0.4559837762]
+    ])
+
+
+    x = np.cos(b)*np.cos(l)
+    y = np.cos(b)*np.sin(l)
+    z = np.sin(b)
+
+
+    xyz = np.vstack((x,y,z))
+
+    xyz_eq = R @ xyz
+
+
+    ra = np.arctan2(
+        xyz_eq[1],
+        xyz_eq[0]
+    )
+
+    dec = np.arcsin(
+        xyz_eq[2]
+    )
+
+
+    ra = np.rad2deg(ra) % 360
+    dec = np.rad2deg(dec)
+
+    return ra, dec
+
 
 def radec_to_lb(ra, dec):
     """Convert RA, Dec to l, b using SLA fortran.
@@ -263,18 +348,20 @@ def xyz_to_lb(cart_pos):
 
 
 
+
+
 def lb_to_xyz(gl, gb, dist):
-    """ Convert galactic coords to Galactic XYZ."""
+    """Convert galactic coordinates (l, b, dist) to Galactic XYZ."""
     rsun = 8.5  # kpc
 
-    l = math.radians(gl)
-    b = math.radians(gb)
+    l = np.radians(gl)
+    b = np.radians(gb)
 
-    x = dist * math.cos(b) * math.sin(l)
-    y = rsun - dist * math.cos(b) * math.cos(l)
-    z = dist * math.sin(b)
+    x = dist * np.cos(b) * np.sin(l)
+    y = rsun - dist * np.cos(b) * np.cos(l)
+    z = dist * np.sin(b)
 
-    return (x, y, z)
+    return x, y, z
 
 
 def scatter_bhat(dm,
@@ -288,6 +375,30 @@ def scatter_bhat(dm,
     # return tau with power scattered with a gaussian, width 0.8
     return math.pow(10.0, random.gauss(logtau, 0.8))
 
+#######################################################################################3
+def scatter_bhat_vectorized(dm, scatterindex=-3.86, freq_mhz=1400.0):
+    """Calculate Bhat et al. (2004) scattering timescale for arrays of DMs."""
+
+    dm = np.asarray(dm)
+
+    logdm = np.log10(dm)
+
+    logtau = (
+        -6.46
+        + 0.154 * logdm
+        + 1.07 * logdm**2
+        + scatterindex * np.log10(freq_mhz/1000.0)
+    )
+
+    # Gaussian scatter with width 0.8 dex
+    logtau += np.random.normal(
+        0,
+        0.8,
+        size=len(dm)
+    )
+
+    return 10.0**logtau
+###############################################################################################
 
 def scale_bhat(timescale,
                frequency,
@@ -342,45 +453,88 @@ def lfl06(N):
     return np.array([yklib.llfr_(C.byref(seed())) for _ in range(N)])
 
 
-def ykr():
-    """ Y&K Model"""
-    return yklib.ykr_(C.byref(seed()))
+def ykr(N=None):
+    """Y&K Model."""
+
+    if N is None:
+        return float(yklib.ykr_(C.byref(seed())))
+
+    r0 = np.empty(N, dtype=np.float64)
+
+    for i in range(N):
+        r0[i] = yklib.ykr_(C.byref(seed()))
+
+    return r0
 
 
 def spiralize(r):
-    """ Make spiral arms, as seen in Fuacher-Giguere & Kaspi 2006"""
+    """
+    Make spiral arms, as seen in Faucher-Giguere & Kaspi 2006.
 
-    # definitions
-    k_list = [4.25, 4.25, 4.89, 4.89]
-    r0_list = [3.48, 3.48, 4.9, 4.9]
-    theta0_list = [1.57, 4.71, 4.09, 0.95]
+    Parameters
+    ----------
+    r : ndarray
+        Galactocentric radial distances.
 
-    # select a spiral arm ( 1->4)
-    arm = random.choice([0, 1, 2, 3])
+    Returns
+    -------
+    x, y : ndarray
+        Cartesian galactic coordinates.
+    """
+
+    r = np.asarray(r)
+    N = len(r)
+
+    # Spiral arm parameters
+    k_list = np.array([4.25, 4.25, 4.89, 4.89])
+    r0_list = np.array([3.48, 3.48, 4.9, 4.9])
+    theta0_list = np.array([1.57, 4.71, 4.09, 0.95])
+
+    # Select one of four spiral arms for each pulsar
+    arm = np.random.randint(0, 4, size=N)
+
     k = k_list[arm]
     r0 = r0_list[arm]
     theta0 = theta0_list[arm]
 
-    # pick an angle
-    theta = k * math.log(r/r0) + theta0
+    # Spiral-arm angle
+    theta = k * np.log(r / r0) + theta0
 
-    # blurring angle
-    angle = 2*math.pi * random.random() * math.exp(-0.35 * r)
+    # Angular blurring
+    angle = (
+        2.0
+        * np.pi
+        * np.random.random(N)
+        * np.exp(-0.35 * r)
+    )
 
-    if random.random() < 0.5:
-        angle = 0 - angle
+    # Randomly choose positive/negative blur
+    signs = np.where(
+        np.random.random(N) < 0.5,
+        -1.0,
+        1.0
+    )
 
-    # modify theta
+    angle *= signs
+
     theta += angle
 
-    # blur in radial direction a little
-    dr = math.fabs(random.gauss(0.0, 0.5 * r))
-    angle = random.random() * 2.0 * math.pi
-    dx = dr * math.cos(angle)
-    dy = dr * math.sin(angle)
+    # Radial blurring
+    dr = np.abs(
+        np.random.normal(
+            0.0,
+            0.5 * r
+        )
+    )
 
-    x = r * math.cos(theta) + dx
-    y = r * math.cos(theta) + dy
+    angle = np.random.random(N) * 2.0 * np.pi
+
+    dx = dr * np.cos(angle)
+    dy = dr * np.sin(angle)
+
+    # Convert to Cartesian coordinates
+    x = r * np.cos(theta) + dx
+    y = r * np.sin(theta) + dy
 
     return x, y
 
