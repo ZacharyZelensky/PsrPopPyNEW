@@ -7,6 +7,7 @@ import numpy as np
 from population import Population
 from pulsar import Pulsar
 from survey_new import Survey
+import orbital_degradation
 
 import pandas as pd
 import pickle
@@ -53,12 +54,16 @@ def run(pop,
         nostdout=False,
         allsurveyfile=True,
         scint=False,
+        compute_degfac=False,
         accelsearch=False,
         jerksearch=False,
-        rratssearch=False):
+        rratssearch=False,loadmodel=False):
 
     """Run the surveys and detect the pulsars."""
-
+    if loadmodel:
+        pop = loadModel(popfile='pulsarpop.pkl')
+    else:
+        pop=pop
     if not nostdout:
         print("Running doSurvey on population...")
         print(pop)
@@ -81,11 +86,11 @@ def run(pop,
         ntf = 0
         ndet = 0
         nbr = 0
-
-        # Only simulate active pulsars
+            
+        #evo only gives you alive pulsars
         alive = [psr for psr in pop.population]
 
-
+        t_obs = s.tobs
         # Calculate S/N for entire population
         snr = s.SNRcalc_new(
             alive,
@@ -95,14 +100,32 @@ def run(pop,
             rratssearch=rratssearch
         )
 
-        snr_arr = np.asarray(snr)
+        snr_arr = np.asarray(snr, dtype=float).copy()
+
+        valid = snr_arr > 0
+        
+        if compute_degfac:
+        
+            if accelsearch:
+                _, gamma = compute_population_degradation(alive,tobs=t_obs,order=2)
+        
+            elif jerksearch:
+                _, gamma = compute_population_degradation(alive,tobs=t_obs,order=3)
+        
+            else:
+                _, gamma = compute_population_degradation(alive,tobs=t_obs,order=1)
+                #print(gamma)
+            
+            gamma = np.asarray(gamma, dtype=float)
+        
+            snr_arr[valid] *= gamma[valid]**2
 
        
 
-        for psr, snr_val in zip(alive, snr):
+        for psr, snr_val in zip(alive, snr_arr):
 
             # Apply scintillation if enabled
-            if scint:
+            if scint and snr_val > 0:
                 snr_val = s.scint(psr, snr_val)
 
             # Detected pulsar
@@ -212,6 +235,26 @@ def run(pop,
     return surveyPops
 
 
+def compute_population_degradation(population, tobs=2100.0, order=1):
+    population=population
+    #get them into orbital deg
+    vectorized_pulsars = {
+        "m":     np.array([p.m for p in pop.population]),
+        "m1":    np.array([p.m1 for p in pop.population]),
+        "m2":    np.array([p.m2 for p in pop.population]),
+        "ps":    np.array([p.period for p in pop.population])/ 1000.0, # p.period maps to ps
+        "omega": np.array([p.om for p in pop.population]),     # p.om maps to omega
+        "inc":   np.array([p.inc for p in pop.population]),
+        "ecc":   np.array([p.ec for p in pop.population]),     # p.ec maps to ecc
+        "pb":    np.array([p.pod for p in pop.population]),    # p.pod maps to pb
+    }
+
+    #Calculate degradation factors
+    gamma_array = orbital_degradation.degradation_factor(tobs=tobs, order=order, **vectorized_pulsars)
+    
+    return pop, gamma_array
+
+
 if __name__ == '__main__':
     """ 'Main' function; read in options, then survey the population"""
     # Parse command line arguments
@@ -252,6 +295,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--scint', nargs='?', const=True, default=False,
         help='include model scintillation effects (def=False)')
+    parser.add_argument('--orbital_deg',default=False, help='turn on the orbital degredation calculation for binary')
 
     parser.add_argument(
         '--accel', nargs='?', const=True, default=False,
@@ -260,6 +304,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--jerk', nargs='?', const=True, default=False,
         help='use accel & jerk search for MSPs (def=False)')
+    parser.add_argument(--'load_pop', default=False, help='load a population')
 
     args = parser.parse_args()
 

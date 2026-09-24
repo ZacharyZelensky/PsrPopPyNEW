@@ -166,9 +166,9 @@ def generate(ngen,
         else:
             dead = np.zeros(ngen, dtype=bool)
  
-    elif pop.spinModel == 'cs06': ################################3this  needs fixed
-            # contopoulos and spitkovsky
-        spindown_cs06(pulsar, pop)
+    elif pop.spinModel == 'cs06':
+        periods, pdot, dead = spindown_cs06_vectorized(p0=p0,bfield_init=bfield_init,age=ages,braking_index=braking_index,coschi=coschi,deathline=pop.deathline
+    )
 
     ###################################################################
         # plough on - only if the pulsar isn't dead!
@@ -453,6 +453,7 @@ def generate(ngen,
     print("Saved population as", savefile)
     
     return pulsars
+
 
 def birthVelocity(pulsar, pop):
     """ Get a birth veolocity for the pulsar"""
@@ -864,7 +865,6 @@ def get_alignment(pop, age):
 
     return chi, sinchi_init, sinchi, coschi
 
-
 def spindown_fk06_vectorized(p0, age, bfield_init, braking_index, sinchi_init):
     """
     Vectorized Faucher-Giguere & Kaspi (2006) spindown model.
@@ -917,6 +917,164 @@ def spindown_fk06_vectorized(p0, age, bfield_init, braking_index, sinchi_init):
     return period, pdot
 
 
+from scipy.special import hyp2f1
+
+
+def spindown_cs06_vectorized(p0, bfield_init, age, braking_index,
+                             coschi, deathline=True):
+    """
+    Vectorized Contopoulos & Spitkovsky (2006) spindown.
+
+    Parameters
+    ----------
+    p0 : array_like
+        Initial period [seconds].
+    bfield_init : array_like
+        Initial magnetic field [G].
+    age : array_like
+        Age [yr].
+    braking_index : array_like
+        Braking index.
+    coschi : array_like
+        cos(obliquity).
+    deathline : bool
+        Whether to apply the death line.
+
+    Returns
+    -------
+    period : ndarray
+        Final period [ms].
+    pdot : ndarray
+        Period derivative.
+    dead : ndarray
+        Boolean death flag.
+    """
+
+    p0 = np.asarray(p0, dtype=np.float64)
+    bfield_init = np.asarray(bfield_init, dtype=np.float64)
+    age = np.asarray(age, dtype=np.float64)
+    n = np.asarray(braking_index, dtype=np.float64)
+    coschi = np.asarray(coschi, dtype=np.float64)
+
+    # ------------------------------------------------------------
+    # Equation 10
+    # ------------------------------------------------------------
+    index = 2.0 / (n + 1.0)
+
+    pdeath = (
+        0.81
+        * bfield_init / 1.0e12
+        / p0
+    ) ** index
+
+    # seconds -> milliseconds
+    pdeath *= 1000.0
+
+    # ------------------------------------------------------------
+    # Integration constants
+    # ------------------------------------------------------------
+    lower = p0 * 1000.0
+
+    a = coschi**2 / pdeath
+
+    temp_const = (
+        3.3e-40
+        * bfield_init**2
+        * (p0 * 1000.0) ** (n - 3.0)
+        * age
+        * 365.25
+        * 24.0
+        * 3.6e9
+    )
+
+    # ------------------------------------------------------------
+    # Analytical integral
+    #
+    # integral x^(n-2)/(1-a*x) dx
+    #
+    # = x^(n-1)/(n-1) *
+    #   hyp2f1(1,n-1;n;a*x)
+    # ------------------------------------------------------------
+
+    k = n - 1.0
+
+    def primitive(x):
+        return (
+            x**k / k
+            * hyp2f1(1.0, k, k + 1.0, a * x)
+        )
+
+    result = primitive(pdeath) - primitive(lower)
+
+    # ------------------------------------------------------------
+    # Determine period
+    # ------------------------------------------------------------
+    period = np.full_like(p0, 1.0e6)
+
+    valid = (
+        (result >= temp_const)
+        & (result <= 1.0e14)
+    )
+
+    # The original loop appears to intend to find the period
+    # where the integral matches temp_const.
+    #
+    # If the intended integral is from lower -> m, solve for m.
+    #
+    # We can do this with a vectorized bisection instead of
+    # looping over every millisecond.
+    # ------------------------------------------------------------
+
+    lo = lower.copy()
+    hi = pdeath.copy()
+
+    active = valid & (pdeath > lower)
+
+    for _ in range(40):
+        mid = 0.5 * (lo + hi)
+
+        integral_mid = primitive(mid) - primitive(lower)
+
+        too_small = integral_mid < temp_const
+
+        lo = np.where(active & too_small, mid, lo)
+        hi = np.where(active & ~too_small, mid, hi)
+
+    period = np.where(
+        active,
+        0.5 * (lo + hi),
+        1.0e6
+    )
+
+    # ------------------------------------------------------------
+    # Death line
+    # ------------------------------------------------------------
+    dead = period > pdeath if deathline else np.zeros_like(period, dtype=bool)
+
+    # ------------------------------------------------------------
+    # Pdot
+    # ------------------------------------------------------------
+    index = 2.0 - n
+
+    pdot = np.zeros_like(period)
+
+    alive = ~dead
+
+    pdot[alive] = (
+        3.3e-40
+        * bfield_init[alive]**2
+        * (1.0 / p0[alive])
+        * (
+            period[alive]
+            / (p0[alive] * 1000.0)
+        ) ** index[alive]
+        * (
+            1.0
+            - a[alive] * period[alive]
+        )
+    )
+
+    return period, pdot, dead
 
 
 def bhattacharya_deathperiod_92_vectorized(period, pdot):
@@ -1535,6 +1693,8 @@ if __name__ == '__main__':
     parser.add_argument('-surveys', metavar='S', nargs='+', default=None,
                         help='surveys to use to check if pulsars are detected'
                         )
+
+    parser.add_argument('-save', default='pulsarevo.pkl', help='save file')
 
     # maximum initial age of pulsars
     parser.add_argument('-tmax', type=float, required=False,
