@@ -1,6 +1,9 @@
-PsrPopPy2
+PsrPopPyNEW
 ========
+NEW Version
+------------
 
+Includes vectorized versions of populate evolve and dosurvey. 
 
 2nd Version
 -----------
