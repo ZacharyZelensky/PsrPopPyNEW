@@ -24,7 +24,7 @@ from population import Population
 from pulsar import Pulsar
 from survey import Survey
 import scipy.stats as stats
-
+from mwprop.nemod.NE2025 import ne2025
 from progressbar import ProgressBar
 
 
@@ -243,12 +243,22 @@ def generate(ngen,
              DM, tau = pygedm.dist_to_dm( gl[i], gb[i],dtrue[i]*1000, method='ymw16')
              dm.append(DM)
              tau_sc.append(tau)
-    elif pop.electronModel =='ne2025':
+    # Import the requested model function directly from mwprop
+  
+
+    elif pop.electronModel == 'ne2025': 
         for i in range(ngen):
-             gl, gb, dist
-             DM, tau = pygedm.dist_to_dm( gl[i], gb[i],dtrue[i]*1000, method='ne2025')
-             dm.append(DM)
-             tau_sc.append(tau)
+            # mwprop functions take (l, b, distance_in_kpc)
+            # 'dmd_only=True' speeds up execution by avoiding scattering matrix calculations
+            Dk, Dv, Du, Dd = ne2025(gl[i], gb[i], dtrue[i],ndir=-1, dmd_only=False,verbose=False,classic=False)
+            
+            #dm and tau
+            DM = Dv['DM']
+            tau = Dv.get('tau', Dv.get('tau_sc', 0.0))
+            
+            dm.append(DM)
+            tau_sc.append(tau)
+
              
     #####################################################################################################################################
 
@@ -622,6 +632,7 @@ def _lorimer2012_msp_periods():
     logp = logpmin + (logpmax-logpmin)*(bin_num+random.random())/len(dist)
 
     return 10.**logp
+
 
 
 if __name__ == '__main__':
