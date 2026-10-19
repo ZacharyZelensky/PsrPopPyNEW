@@ -5,6 +5,10 @@ NEW Version
 
 Includes vectorized versions of populate evolve and dosurvey. 
 
+In order to use the ne2025 DM model, `pip install mwprop` for the python version. 
+
+If you would like to use the Fortran version you will need to clone mwprop from https://github.com/stella-ocker/mwprop and compile the Fortran code. I recommend cloning within `lib/python`.
+
 2nd Version
 -----------
 Added rrat generation and detection part and much more!
