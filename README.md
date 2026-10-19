@@ -3,7 +3,7 @@ PsrPopPyNEW
 NEW Version
 ------------
 
-Includes vectorized versions of populate evolve and dosurvey. 
+Includes vectorized versions of populate evolve and dosurvey. An example notebook is located in `/lib/python` .
 
 In order to use the ne2025 DM model, `pip install mwprop` for the python version. 
 
