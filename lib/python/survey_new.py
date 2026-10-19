@@ -330,31 +330,27 @@ class Survey:
         
         return True
 
-    def inPointing(self, pulsar):
-        """Calculate whether pulsar is inside FWHM/2 of pointing position.
-        Currently breaks as soon as it finds a match. !!!Could be a closer
-        position further down the list!!!"""
-        # initialise offset_deg to be a big old number
-        # FWHM is in arcmin so always multiply by 60
-        # http://wiki.scipy.org/Cookbook/KDTree
-        offset_deg = 1.
+    def inPointing_vectorized(self, pulsars):
+        gl = np.array([p.gl for p in pulsars])
+        gb = np.array([p.gb for p in pulsars])
+        coords = np.column_stack((gl, gb))
 
-        # loop over pointings
-        for point in self.pointingslist:
-            # do a really basic check first
+        pcoords = self.pointingslist
+        tree = cKDTree(pcoords)
+        offset, closest = tree.query(coords)
 
-            glterm = (pulsar.gl - point.gl)**2
-            gbterm = (pulsar.gb - point.gb)**2
-            offset_new = math.sqrt(glterm + gbterm)
+        # Correctly pull the pointing-specific gain and tobs if they exist
+        if self.gainslist:
+            gain = np.array(self.gainslist)[closest]
+        else:
+            gain = np.full(len(pulsars), self.gain)
 
-            # if the beam is close enough, break out of the loop
-            if offset_new < self.fwhm:
-                offset_deg = offset_new
-                self.gain = point.gain
-                self.tobs = point.tobs
-                break
+        if self.tobslist:
+            tobs = np.array(self.tobslist)[closest]
+        else:
+            tobs = np.full(len(pulsars), self.tobs)
 
-        return offset_deg
+        return offset, gain, tobs
 ##############################################################################  
     def inPointing_vectorized(self, pulsars):
 
@@ -599,38 +595,28 @@ class Survey:
         # -----------------------------
         # Pointing / beam check
         # -----------------------------
-        gain = np.full(len(idx), self.gain)
-        tobs = np.full(len(idx), self.tobs)
-    
         if self.pointingslist is not None:
-    
+            # 1. Fetch offsets and pointing-specific specs for the current subpopulation
             offset, gain, tobs = self.inPointing_vectorized(
                 np.array(pulsars, dtype=object)[idx]
             )
-    
-            # offset 
-            matched = offset < self.fwhm
-    
-            # remove pulsars outside beam
+            
+            # 2. Find which ones are inside the beam threshold
+            matched = offset < (self.fwhm / 60.0) 
+
+            # 3. Uniformly filter all parallel arrays
             idx = idx[matched]
-            offset = offset[matched]* 60.0
+            offset = offset[matched] * 60.0  # Convert degrees to arcmin directly
             gain = gain[matched]
             tobs = tobs[matched]
-    
+
             if len(idx) == 0:
                 return snr
-    
-            # convert degrees -> arcmin
-            offset *= 60.0
-    
         else:
-    
-            offset = (
-                self.fwhm *
-                np.sqrt(np.random.random(len(idx))) /
-                2.0
-            )
-    
+            # Default baseline specs when no pointing list is used
+            gain = np.full(len(idx), self.gain)
+            tobs = np.full(len(idx), self.tobs)
+            offset = self.fwhm * np.sqrt(np.random.random(len(idx))) / 2.0
     
         # -----------------------------
         # Beam attenuation
@@ -742,41 +728,6 @@ class Survey:
         
         # Apply beam attenuation only to good pulsars
         snr[good_idx] *= degfac[good]
-    
-    
-    
-    
-        # -----------------------------
-        # Binary degradation
-        # -----------------------------
-        binary_idx = np.where(binary)[0]
-    
-        for i in binary_idx:
-    
-            if snr[i] > 0:
-    
-                if jerksearch:
-                    gamma = degradation.gamma3(
-                        pulsars[i],
-                        self.tobs,
-                        1
-                    )
-    
-                elif accelsearch:
-                    gamma = degradation.gamma2(
-                        pulsars[i],
-                        self.tobs,
-                        1
-                    )
-    
-                else:
-                    gamma = degradation.gamma1(
-                        pulsars[i],
-                        self.tobs,
-                        1
-                    )
-    
-                snr[i] *= gamma
     
     
         return snr

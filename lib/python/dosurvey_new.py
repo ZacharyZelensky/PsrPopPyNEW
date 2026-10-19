@@ -7,7 +7,8 @@ import numpy as np
 from population import Population
 from pulsar import Pulsar
 from survey_new import Survey
-import orbital_degradation
+#import orbital_degradation
+import fast_port
 
 import pandas as pd
 import pickle
@@ -60,7 +61,7 @@ def run(pop,
         rratssearch=False,loadmodel=False):
 
     """Run the surveys and detect the pulsars."""
-    if loadmodel:
+    if pop==None:
         pop = loadModel(popfile='pulsarpop.pkl')
     else:
         pop=pop
@@ -101,27 +102,31 @@ def run(pop,
         )
 
         snr_arr = np.asarray(snr, dtype=float).copy()
-
+        #print(snr_arr)
+        #print(snr_arr)
         valid = snr_arr > 0
-        
+        #        # only compute degfacts for pulsars with snr above zero
         if compute_degfac:
-        
-            if accelsearch:
-                _, gamma = compute_population_degradation(alive,tobs=t_obs,order=2)
-        
-            elif jerksearch:
-                _, gamma = compute_population_degradation(alive,tobs=t_obs,order=3)
-        
-            else:
-                _, gamma = compute_population_degradation(alive,tobs=t_obs,order=1)
-                #print(gamma)
+            print("computing degredation factor")
             
+            # Filter alive list to only include pulsars with SNR > 0
+            alive_valid = [p for i, p in enumerate(alive) if valid[i]]
+            
+            if accelsearch:
+                _, gamma = compute_population_degradation(alive_valid, tobs=t_obs, order=2)
+            elif jerksearch:
+                _, gamma = compute_population_degradation(alive_valid, tobs=t_obs, order=3)
+            else:
+                _, gamma = compute_population_degradation(alive_valid, tobs=t_obs, order=1)
+                
             gamma = np.asarray(gamma, dtype=float)
-        
-            snr_arr[valid] *= gamma[valid]**2
+            #print(gamma)
+            # Map the smaller gamma array back onto the valid indices of the full snr_arr
+            snr_arr[valid] *= gamma**2
+
 
        
-
+        #print(snr_arr)
         for psr, snr_val in zip(alive, snr_arr):
 
             # Apply scintillation if enabled
@@ -236,23 +241,26 @@ def run(pop,
 
 
 def compute_population_degradation(population, tobs=2100.0, order=1):
-    population=population
-    #get them into orbital deg
+    # 'population' is a list of Pulsar objects passed from 'alive_valid'
+    
+    # Extract the attributes directly from the provided list
     vectorized_pulsars = {
-        "m":     np.array([p.m for p in pop.population]),
-        "m1":    np.array([p.m1 for p in pop.population]),
-        "m2":    np.array([p.m2 for p in pop.population]),
-        "ps":    np.array([p.period for p in pop.population])/ 1000.0, # p.period maps to ps
-        "omega": np.array([p.om for p in pop.population]),     # p.om maps to omega
-        "inc":   np.array([p.inc for p in pop.population]),
-        "ecc":   np.array([p.ec for p in pop.population]),     # p.ec maps to ecc
-        "pb":    np.array([p.pod for p in pop.population]),    # p.pod maps to pb
+        "m":     np.array([p.m for p in population]),
+        "m1":    np.array([p.m1 for p in population]),
+        "m2":    np.array([p.m2 for p in population]),
+        "ps":    np.array([p.period for p in population]) / 1000.0, 
+        "omega": np.array([p.om for p in population]),     
+        "inc":   np.array([p.inc for p in population]),
+        "ecc":   np.array([p.ec for p in population]),     
+        "pb":    np.array([p.pod for p in population]),    
     }
 
-    #Calculate degradation factors
-    gamma_array = orbital_degradation.degradation_factor(tobs=tobs, order=order, **vectorized_pulsars)
+    # Calculate degradation factors
+    gamma_array = fast_port.degradation_factor(tobs=tobs, order=order, **vectorized_pulsars)
     
-    return pop, gamma_array
+    # Return the population list and the generated gamma array
+    return population, gamma_array
+
 
 
 if __name__ == '__main__':

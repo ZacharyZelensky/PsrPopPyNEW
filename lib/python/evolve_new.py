@@ -314,7 +314,7 @@ def generate(ngen,
 
     dm=[]
     tau_sc=[]
-    if electronModel not in ['ne2001', 'lmt85','ymw16','ne2025','ne2001_F']:
+    if electronModel not in ['ne2001', 'lmt85','ymw16','ne2025','ne2001_F','ne2025_F']:
         print("Unsupported electron model: {0}".format(electronModel))
             
         
@@ -346,6 +346,15 @@ def generate(ngen,
              DM, tau = pygedm.dist_to_dm( gl[i], gb[i],dtrue[i]*1000, method='ne2025')
              dm.append(DM)
              tau_sc.append(tau)
+    #use the fortran code 
+    #you will need to compile the fortran ne2025 in mwprop
+    elif pop.electronModel == 'ne2025_F':
+        for i in range(ngen):
+            #wrapper around fortran version 
+            DM, tau, _ = run_ne2025(gl[i], gb[i], dtrue[i], ndir=-1)
+            
+            dm.append(DM)
+            tau_sc.append(tau)
              
     #####################################################################################################################################
 
@@ -864,6 +873,9 @@ def get_alignment(pop, age):
         )
 
     return chi, sinchi_init, sinchi, coschi
+
+
+
 
 def spindown_fk06_vectorized(p0, age, bfield_init, braking_index, sinchi_init):
     """
@@ -1677,6 +1689,22 @@ def pulsar_beaming_new(period, chi, bM):
 
     # One random draw for each pulsar
     return np.random.random(len(period)) < fraction
+
+
+import subprocess
+from subprocess import Popen, call, PIPE, DEVNULL
+
+code_path = 'mwprop/ne2025f'  # path to parent directory for NE2025 code
+
+def run_ne2025(gl, gb, dkpc, ndir):
+    process = Popen("cd " + code_path + "/bin.NE2025; ./NE2025 %s %s %s %s" % (gl, gb, dkpc, ndir), 
+                    shell=True, stdout=PIPE, stderr=DEVNULL)
+    output = process.communicate()[0]  # output = a long string
+    xne2025 = output.split()           # x = a list
+    dmmod = float(xne2025[xne2025.index(b'DM') - 1])
+    taumod = float(xne2025[xne2025.index(b'TAU') - 1])
+    distmod = float(xne2025[xne2025.index(b'DIST') - 1])
+    return dmmod, taumod, distmod
 
 
 if __name__ == '__main__':
