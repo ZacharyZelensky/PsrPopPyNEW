@@ -8,7 +8,7 @@ from population import Population
 from pulsar import Pulsar
 from survey_new import Survey
 #import orbital_degradation
-import fast_port
+import orbital_deg_fast
 
 import pandas as pd
 import pickle
