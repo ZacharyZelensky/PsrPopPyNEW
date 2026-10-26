@@ -11,11 +11,11 @@ import numpy as np
 import distributions_new as dists
 import galacticops_new as go
 import beaming_new as beam
-import populate
+import populate_new
 
 from population import Population
 from pulsar import Pulsar
-from survey import Survey
+#from survey import Survey
 
 #import pygedm
 

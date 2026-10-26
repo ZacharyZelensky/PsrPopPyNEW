@@ -4,7 +4,7 @@ import math
 import random
 
 from orbit import Orbit
-import galacticops as go
+import galacticops_new as go
 
 
 class PulsarException(Exception):

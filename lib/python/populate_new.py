@@ -22,7 +22,7 @@ import orbitalparams
 import dist_gen as dg
 from population import Population
 from pulsar import Pulsar
-from survey import Survey
+#from survey import Survey
 import scipy.stats as stats
 from mwprop.nemod.NE2025 import ne2025
 from progressbar import ProgressBar

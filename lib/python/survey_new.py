@@ -7,11 +7,11 @@ import numpy as np
 import math
 import random
 from scipy.special import j1
-import distributions as dist
+import distributions_new as dist
 import galacticops_new as go
-from population import Population
+#from population import Population
 import radiometer_new as rad
-import degradation
+#import degradation
 from scipy.spatial import cKDTree
 
 class SurveyException(Exception):
@@ -516,45 +516,7 @@ class Survey:
         if self.AA and sig_to_noise > 0.0:
             sig_to_noise *= self._AA_factor(pulsar)
 
-        # account for binary motion
-        if pulsar.is_binary:
-            # print "the pulsar is a binary!"
-            if jerksearch:
-                #print "jerk"
-                gamma = degradation.gamma3(pulsar,
-                                           self.tobs,
-                                           1)
-            elif accelsearch:
-                #print "accel"
-                gamma = degaadation.gamma2(pulsar,
-                                           self.tobs,
-                                           1)
-            else:
-                #print "norm"
-                gamma = degradation.gamma1(pulsar,
-                                           self.tobs,
-                                           1)
-
-                #print "gamma harm1 = ", gamma
-
-                gamma = degradation.gamma1(pulsar,
-                                           self.tobs,
-                                           2)
-
-                #print "gamma harm2 = ", gamma
-                gamma = degradation.gamma1(pulsar,
-                                           self.tobs,
-                                           3)
-
-                #print "gamma harm3 = ", gamma
-                gamma = degradation.gamma1(pulsar,
-                                           self.tobs,
-                                           4)
-                #print "gamma harm4 = ", gamma
-
-        # return the S/N accounting for beam offset
         
-        return sig_to_noise * degfac
 #####################################################################################################################################################3
     def SNRcalc_new(self,
                 pulsars,
