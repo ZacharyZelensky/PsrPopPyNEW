@@ -3,11 +3,27 @@ PsrPopPyNEW
 NEW Version
 ------------
 
-Includes vectorized versions of populate evolve and dosurvey. An example notebook is located in `/lib/python` .
+Includes vectorized versions of main scripts and orbital degredation. 
 
-In order to use the ne2025 DM model, `pip install mwprop` for the python version. 
+Additions: 
+1. Vectorized versions of populate, evolve, and dosurvey.
+2. An example notebook `Examples.ipynb`.
+3. Native python implementation of the orbital degradation factor for binary pulsars from Bachi et. al (2013).
+   To use in dosurvey set `compute_degfac=True`, then specify for accel or jerk search with `accelsearch=True` or `jerksearch=True`.
+4. Support for ne2025 electron density model. 
+
+In order to use the ne2025 DM model, `pip install mwprop` for the python version. If you plan to use ne2025 please cite Ocker & Cordes (2026) DOI: 10.3847/1538-4357/ae5825 .
 
 If you would like to use the Fortran version you will need to clone mwprop from https://github.com/stella-ocker/mwprop and compile the Fortran code. I recommend cloning within `lib/python`.
+
+If you plan to use the orbital degradation calculation please cite Bagchi et al. (2013) DOI: 10.1093/mnras/stt559
+
+AI Acknowledgement: This project utilizes generative-AI to assist coding development. Claude was used to convert the Fortran code for the orbital degradation factors to Python.
+
+
+
+Old Info
+--------
 
 2nd Version
 -----------
@@ -23,10 +39,6 @@ Additions
 3. wxHist and wxView now support burst rate and number of detected pulses for singlepulse case.
 4. ymw16 dm model now included
 5. Now dither the distnces using --dither option. See lorimer et al 2006 section 4.2.
-
-
-Old Info
---------
 
 (For full documentation, see http://samb8s.github.com/PsrPopPy/ or manual.pdf)
 
